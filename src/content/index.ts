@@ -1,0 +1,14 @@
+import { fundamentals } from './fundamentals';
+import { resourceLessons } from './resources';
+import { gameplayLessons } from './gameplay';
+import { eventLessons } from './events';
+import { systemLessons } from './systems';
+import { nuiLessons } from './nui';
+import { frameworkLessons } from './frameworks';
+import { professionalLessons } from './professional';
+import { projectBriefs } from './projects';
+import { sourceRegistry } from './sources';
+export { modules } from './sources';
+export const lessons = [...fundamentals, ...resourceLessons, ...gameplayLessons, ...eventLessons, ...systemLessons, ...nuiLessons, ...frameworkLessons, ...professionalLessons];
+export const sources = sourceRegistry.map(source => ({...source, lessons: lessons.filter(lesson => lesson.sources.includes(source.id)).map(lesson => lesson.id)}));
+export const projects = projectBriefs;
