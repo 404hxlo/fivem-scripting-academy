@@ -1,4 +1,5 @@
 import type {Project} from '../types';
+import {safeName} from '../../electron/academy-state.mjs';
 const manifest=(extra:string)=>`fx_version 'cerulean'\ngame 'gta5'\nauthor 'Academy learner'\ndescription 'A learning resource'\nversion '1.0.0'\n${extra}\n`;
 export const templates:Record<string,{title:string;description:string;files:Record<string,string>}>={
  blank:{title:'Empty resource',description:'A manifest and a blank client script. Start with your own idea.',files:{'fxmanifest.lua':manifest("client_script 'client.lua'"),'client.lua':'-- Write your client script here.\n'}},
@@ -94,5 +95,14 @@ RegisterCommand('academyjob', function(source)
 end, false)
 `}}
 };
-export function createProject(name:string, template:string, briefId?:string):Project {if(!/^[a-z][a-z0-9_-]{1,47}$/.test(name))throw new Error('Use 2–48 lowercase letters, numbers, underscores or hyphens; start with a letter.');if(!templates[template])throw new Error('Choose a resource template.');return {id:crypto.randomUUID(),name,template,files:{...templates[template].files},updated:new Date().toISOString(),history:[],briefId,checkpoints:[]}}
+export function validResourceName(name: string): boolean {
+  if (!/^[a-z][a-z0-9_-]{1,47}$/.test(name)) return false;
+  try { safeName(name); return true; }
+  catch { return false; }
+}
+export function createProject(name: string, template: string, briefId?: string): Project {
+  if (!validResourceName(name)) throw new Error('Choose a resource name using 2–48 lowercase letters, numbers, underscores or hyphens. Start with a letter and avoid Windows reserved names.');
+  if (!Object.hasOwn(templates, template)) throw new Error('Choose a resource template.');
+  return {id:crypto.randomUUID(),name,template,files:{...templates[template].files},updated:new Date().toISOString(),history:[],briefId,checkpoints:[]};
+}
 export function snapshot(project:Project):Project {return {...project,history:[{date:new Date().toISOString(),files:{...project.files}},...project.history].slice(0,20)}}

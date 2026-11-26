@@ -1,8 +1,8 @@
 {
-  "name": "fivem-scripting-academy",
-  "version": "1.0.1",
-  "description": "An offline-first FiveM and Lua programming school",
-  "author": "FiveM Scripting Academy",
+  "name": "brick-by-script-learn",
+  "version": "1.2.0",
+  "description": "Learn Lua and build FiveM resources with Brick by Script Learn.",
+  "author": "Brick by Script",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -12,6 +12,7 @@
     "start": "electron .",
     "test": "vitest run",
     "test:desktop": "node scripts/desktop-test.mjs",
+    "test:browser": "node scripts/browser-profile-test.mjs",
     "dist": "npm run build && electron-builder --win nsis --x64",
     "pack": "npm run build && electron-builder --dir --win --x64"
   },
@@ -41,7 +42,7 @@
   },
   "build": {
     "appId": "dev.fivem.academy",
-    "productName": "FiveM Scripting Academy",
+    "productName": "Brick by Script Learn",
     "directories": {
       "output": "release"
     },

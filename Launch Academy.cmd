@@ -1,7 +1,2 @@
 @echo off
-cd /d "%~dp0"
-if exist "release\win-unpacked\FiveM Scripting Academy.exe" (
-  start "" "release\win-unpacked\FiveM Scripting Academy.exe"
-) else (
-  call npm start
-)
+call "%~dp0Launch Brick by Script Learn.cmd"

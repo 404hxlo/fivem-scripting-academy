@@ -1,12 +1,14 @@
-# FiveM Scripting Academy
+# Brick by Script Learn
 
 A Windows app for learning Lua 5.4 and developing FiveM resources. Lessons, runnable exercises, quizzes, project files, and references are bundled for offline use.
 
-Version 1.0.1 passed **196 automated tests and 16 desktop checks** on Windows. The application archive in the installer matches the tested archive. [Validation results and limits](docs/VALIDATION.md)
+Open **City Dispatch** to program a city bus with Lua. Drive one block at a time, pick up passengers, and earn a route stamp when you reach the terminal. The three routes run offline. Your route scripts and stamps are saved with your profile and included in backups.
+
+For a shorter game, open **Arcade** from any lesson for three Lua output predictions, an explanation after each answer, and a personal best. [Release validation](docs/VALIDATION.md)
 
 ## Launch
 
-Download the Windows setup executable, run it for the current user, then launch **FiveM Scripting Academy** from the Start menu or desktop shortcut. [Latest Windows release](https://github.com/404hxlo/fivem-scripting-academy/releases/latest)
+Run the Windows installer and open **Brick by Script Learn** from the Start menu or desktop shortcut. In a local checkout, double-click **Launch Brick by Script Learn.cmd** to launch the unpacked build. [Published Windows releases](https://github.com/404hxlo/fivem-scripting-academy/releases)
 
 Local builds write the installer to `release/` and the unpacked app to `release/win-unpacked/`.
 
@@ -45,6 +47,7 @@ npm run dev                 # loopback browser preview
 npm run build               # type check + bundled production assets
 npm test                    # curriculum, runtime, state, export and database tests
 npm run test:desktop        # actual Electron acceptance test (build first)
+npm run test:browser        # Edge profile, backup and multi-tab checks (build first)
 npm run pack                # unpacked Windows application
 npm run dist                # per-user NSIS Windows installer
 ```
@@ -62,7 +65,7 @@ The Vite development server is a development convenience. The production desktop
 
 ## Data and backups
 
-The desktop database is normally `%APPDATA%\FiveM Scripting Academy\academy.sqlite`. SQLite uses a rollback journal and transactional saves. Import creates a recovery database snapshot before replacing current data. Use **Settings & backups → Export backup** for a portable JSON file containing progress and projects. Keep a copy outside the installation directory before moving computers.
+Brick by Script Learn opens the same desktop database used by FiveM Scripting Academy 1.0.x at `%APPDATA%\FiveM Scripting Academy\academy.sqlite`. Existing lessons, projects and settings carry over automatically. Import creates a recovery database snapshot before replacing current data. Use **Settings & backups → Export backup** for a portable JSON file containing progress and projects.
 
 Project **Save snapshot** stores independent versions inside the application, up to 20 retained snapshots per project. Restoring a snapshot also saves the current files first. Opening in VS Code creates a separate filesystem snapshot; changes made there are not silently synchronized back into the academy.
 

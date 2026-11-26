@@ -6,8 +6,13 @@ const crypto = require('node:crypto');
 const { AcademyStore, validateState, validateResource, validateUrl, writeResourceFolder, resourceZip, parseBackup, serializeBackup, EXTERNAL_HOSTS, MAX_BACKUP_BYTES } = require('./backend.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
-app.setName('FiveM Scripting Academy');
-if (process.env.ACADEMY_DATA_DIR) app.setPath('userData', path.resolve(process.env.ACADEMY_DATA_DIR));
+const productName = 'Brick by Script Learn';
+// 1.0.x stored SQLite, session files and snapshots under this name.
+// Pin that same directory before the instance lock and default session open.
+const profileDirectory = process.env.ACADEMY_DATA_DIR || app.commandLine.getSwitchValue('user-data-dir')
+  || path.join(app.getPath('appData'), 'FiveM Scripting Academy');
+app.setName(productName);
+app.setPath('userData', path.resolve(profileDirectory));
 // A second window must not race the first window's whole-state autosaves.
 // Independent test profiles still use their own userData directory and lock.
 const singleInstance = app.requestSingleInstanceLock();
@@ -22,7 +27,7 @@ if (!app.isPackaged && process.env.ACADEMY_DEV_URL) {
 }
 const trustedUrl = url => { try { const actual = new URL(url); const expected = new URL(startUrl); return actual.protocol === expected.protocol && actual.host === expected.host; } catch { return false; } };
 function checkSender(event) {
-  if (!window || event.sender.id !== window.webContents.id || !event.senderFrame || event.senderFrame.parent || !trustedUrl(event.senderFrame.url)) throw new Error('This request is not from the Academy window.');
+  if (!window || event.sender.id !== window.webContents.id || !event.senderFrame || event.senderFrame.parent || !trustedUrl(event.senderFrame.url)) throw new Error('This request is not from the Brick by Script Learn window.');
 }
 function register(channel, handler) {
   ipcMain.handle(channel, async (event, ...args) => {
@@ -30,7 +35,7 @@ function register(channel, handler) {
     return handler(...args);
   });
 }
-const fileTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
+const fileTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webp': 'image/webp', '.woff2': 'font/woff2', '.ttf': 'font/ttf' };
 const csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'none'";
 
 async function refreshSource(input) {
@@ -38,7 +43,7 @@ async function refreshSource(input) {
   const checked = new Date().toISOString();
   try {
     for (let redirect = 0; redirect < 5; redirect++) {
-      const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'FiveM-Scripting-Academy/1.0 Source-Link-Check' } });
+      const response = await fetch(url, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(8000), headers: { 'User-Agent': `Brick-by-Script-Learn/${app.getVersion()} Source-Link-Check` } });
       if ([301,302,303,307,308].includes(response.status)) {
         const location = response.headers.get('location');
         if (!location) return { status: `HTTP ${response.status}: redirect has no destination`, checked };
@@ -62,7 +67,7 @@ function installIPC() {
       event.returnValue = true;
     } catch (error) {
       const choice = dialog.showMessageBoxSync(window, {
-        type: 'error', title: 'Unsaved Academy changes',
+        type: 'error', title: 'Unsaved learning progress',
         message: 'The latest changes could not be saved.',
         detail: error.message, buttons: ['Keep editing', 'Close without saving'],
         defaultId: 0, cancelId: 0,
@@ -82,17 +87,17 @@ function installIPC() {
   });
   register('academy:export-backup', async input => {
     const state = validateState(input);
-    const result = await dialog.showSaveDialog(window, { title: 'Export your Academy progress', defaultPath: `academy-progress-${new Date().toISOString().slice(0,10)}.json`, filters: [{ name: 'Academy progress backup', extensions: ['json'] }], properties: ['showOverwriteConfirmation', 'createDirectory'] });
+    const result = await dialog.showSaveDialog(window, { title: 'Export your learning progress', defaultPath: `brick-by-script-learn-${new Date().toISOString().slice(0,10)}.json`, filters: [{ name: 'Learning progress backup', extensions: ['json'] }], properties: ['showOverwriteConfirmation', 'createDirectory'] });
     if (result.canceled || !result.filePath) return null;
     fs.writeFileSync(result.filePath, serializeBackup(state), 'utf8');
     return result.filePath;
   });
   register('academy:import-backup', async () => {
-    const result = await dialog.showOpenDialog(window, { title: 'Import Academy progress (current data will be backed up)', properties: ['openFile'], filters: [{ name: 'Academy progress backup', extensions: ['json'] }] });
+    const result = await dialog.showOpenDialog(window, { title: 'Import learning progress', properties: ['openFile'], filters: [{ name: 'Learning progress backup', extensions: ['json'] }] });
     if (result.canceled || !result.filePaths[0]) return null;
     if (fs.statSync(result.filePaths[0]).size > MAX_BACKUP_BYTES) throw new Error('Backup file exceeds the 48 MB import limit.');
     const state = parseBackup(fs.readFileSync(result.filePaths[0], 'utf8'));
-    const confirm = await dialog.showMessageBox(window, { type: 'question', title: 'Replace Academy progress?', message: 'Import this progress backup?', detail: 'Your current SQLite database will first be copied into the Academy data backups folder. Import replaces course progress, settings, and playground projects.', buttons: ['Cancel', 'Import backup'], defaultId: 0, cancelId: 0 });
+    const confirm = await dialog.showMessageBox(window, { type: 'question', title: 'Replace learning progress?', message: 'Import this progress backup?', detail: 'Brick by Script Learn will save a recovery copy of your current database before replacing your course progress, settings, and playground projects.', buttons: ['Cancel', 'Import backup'], defaultId: 0, cancelId: 0 });
     if (confirm.response !== 1) return null;
     return store.import(state).state;
   });
@@ -114,7 +119,7 @@ function installIPC() {
 }
 
 async function createWindow() {
-  window = new BrowserWindow({ width: 1480, height: 980, minWidth: 1000, minHeight: 680, backgroundColor: '#0d0e13', title: 'FiveM Scripting Academy', icon: path.join(__dirname, '..', 'build', 'icon.png'), show: false, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, spellcheck: false } });
+  window = new BrowserWindow({ width: 1480, height: 980, minWidth: 1000, minHeight: 680, backgroundColor: '#0b1520', title: productName, icon: path.join(__dirname, '..', 'build', 'icon.png'), show: false, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, spellcheck: false } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (!trustedUrl(url)) event.preventDefault(); });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
@@ -139,7 +144,7 @@ if (singleInstance) app.whenReady().then(async () => {
   store = new AcademyStore(path.join(app.getPath('userData'), 'academy.sqlite'));
   installIPC();
   await createWindow();
-}).catch(error => { dialog.showErrorBox('Academy could not start', error.message); app.quit(); });
+}).catch(error => { dialog.showErrorBox('Brick by Script Learn could not start', error.message); app.quit(); });
 app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => { if (store) { store.close(); store = null; } });

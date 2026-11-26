@@ -1,4 +1,26 @@
-# Release validation — 18 November 2026
+# Release validation
+
+## Brick by Script Learn 1.2.0
+
+City Dispatch passed all three route playthroughs in the production browser build. Checks covered valid detours, an incomplete route, changing missions during playback, keyboard controls, reduced motion, and reopening all three saved scripts and stamps. The desktop and phone layouts fit 1280-pixel and 390-pixel viewports. The game requested no external assets during the playthrough.
+
+The automated suite passed 244 tests. Four Edge profile checks passed, including a regression for an oversized project edit followed by a snapshot, a corrected file and an unrelated settings change. The 23 production desktop checks covered running a real Lua bus route and preserving the route in SQLite and a portable backup. The Windows upgrade from 1.1.0 to 1.2.0 preserved the existing learner database byte for byte.
+
+## Brick by Script Learn 1.1.0
+
+The installed 1.0.1 entry point and the packaged 1.0.2 entry point used the same profile directory. A change-of-name test saved a completed lesson, quiz answer, Lua code, multi-file project, preferences and study time with the old name. The renamed app reopened the same SQLite file and every field matched. This passed in both the development Electron shell and an isolated packaged shell. A separate packaged-shell first launch created a fresh profile successfully. The Windows installer keeps the original application ID.
+
+The 1.1.0 release passed 226 automated tests, 22 checks against the installed Windows app and three browser profile checks. The bundled Lua 5.4 runtime confirmed the answers to all 12 Output Arcade puzzles. The installed app loaded the artwork offline, ran a three-round game and saved the personal best. The Windows upgrade preserved the existing learner database byte for byte.
+
+## Version 1.0.2 bug review
+
+The Windows build passed 212 automated tests, including all 58 lesson reference solutions. Six event, framework and NUI exercises now invoke learner-written handlers in the offline Lua runtime. Regression cases cover incorrect operation ordering, cooldowns, missing callback responses, and valid alternative solutions. The framework, browser and FiveM APIs in these exercises are simulated.
+
+The packaged executable passed 21 desktop checks with an isolated SQLite profile, zero unexpected renderer errors and zero external renderer requests. These checks covered previously discarded quiz completion, stale Lua results, editing a restored file that was previously inactive, and a NUI callback written with the supported legacy API name. Live FiveM gameplay was outside this review.
+
+Three production browser checks used a disposable Edge profile. One reproduced concurrent tabs overwriting preferences in 1.0.1, then verified that the waiting tab opened the latest saved data in 1.0.2. The other checks verified that an oversized import preserves the visible and saved profile, and that an unreadable profile can be downloaded intact before restoring a valid backup.
+
+On Windows, run `npm run build`, `npm test`, `npm run test:browser` and `npm run test:desktop` to repeat the checks. The browser check requires Microsoft Edge.
 
 ## Version 1.0.1 bug checks
 
@@ -18,7 +40,7 @@ From a source checkout with Node.js 24 installed, run these commands in PowerShe
 npm ci
 npm test
 npm run pack
-$env:ACADEMY_TEST_EXECUTABLE = (Resolve-Path 'release/win-unpacked/FiveM Scripting Academy.exe').Path
+$env:ACADEMY_TEST_EXECUTABLE = (Resolve-Path 'release/win-unpacked/Brick by Script Learn.exe').Path
 npm run test:desktop
 Remove-Item Env:ACADEMY_TEST_EXECUTABLE
 ```

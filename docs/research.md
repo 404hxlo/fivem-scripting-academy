@@ -1,6 +1,6 @@
 # Research and curriculum decisions
 
-Retrieved 2026-11-18. The FiveM Scripting Academy lessons are original educational material. The Cfx.re scripting manual and references are the foundation; Lua.org defines standard Lua, and framework maintainers define framework APIs. The app is an independent learning tool.
+Retrieved 2026-11-18. Brick by Script Learn uses original lessons grounded in the Cfx.re scripting manual and references. Lua.org defines standard Lua, and framework maintainers document their APIs. The app is an independent learning tool.
 
 ## Learning sequence
 

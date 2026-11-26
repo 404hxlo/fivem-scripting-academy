@@ -1,15 +1,14 @@
 import { strToU8, zipSync } from 'fflate';
 import type { Project, RunResult } from '../types';
 import { safeFileName } from './state';
+import { validResourceName } from './templates';
+export { validResourceName } from './templates';
 
 export interface ResourceCheck { name: string; status: 'pass' | 'fail' | 'review'; detail: string; file?: string; line?: number }
 export interface ResourceReview { valid: boolean; checks: ResourceCheck[]; dependencies: string[] }
 type Token = { kind: 'word' | 'string' | 'symbol'; value: string };
 export type SyntaxRunner = (code: string, options: { syntaxOnly: true }) => Promise<RunResult>;
 
-export function validResourceName(name: string): boolean {
-  return /^[a-z][a-z0-9_-]{1,47}$/.test(name) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name);
-}
 export const validResourcePath = safeFileName;
 // A small lexical reader for declarative manifests. It never executes a manifest.
 // Real Lua syntax is checked separately by the bundled Lua 5.4 compiler.
@@ -167,18 +166,22 @@ export function inspectResource(project: Project): ResourceReview {
   const refs = ['client_script','client_scripts','server_script','server_scripts','shared_script','shared_scripts','file','files','ui_page'].flatMap(key => (values[key] ?? []).map(file => ({ key, file })));
   add('At least one resource entry', refs.length > 0, 'Declare a client, server, shared script or packaged file in your manifest.', 'fxmanifest.lua');
   for (const {key, file} of refs) {
-    if (file.startsWith('@')) {
+    if (key === 'ui_page') {
+      if (/^https:\/\//i.test(file)) {
+        checks.push({ name: 'Remote NUI page', status: 'review', detail: 'This UI needs a network connection. Prefer bundled HTML for a self-contained resource.', file: 'fxmanifest.lua' });
+      } else {
+        add(`Manifest file: ${file}`, validResourcePath(file) && Object.hasOwn(project.files, file), 'Specify the exact path and case of the local NUI document. The files list may use a wildcard.', 'fxmanifest.lua');
+      }
+    } else if (file.startsWith('@')) {
       const external = file.slice(1).split('/')[0];
       add(`External resource: ${external}`, dependencies.includes(external), `The ${file} import requires dependency '${external}' and the matching resource installed on your test server.`, 'fxmanifest.lua');
-    } else if (/^https:\/\//.test(file) && key === 'ui_page') {
-      checks.push({ name: 'Remote NUI page', status: 'review', detail: 'This UI needs a network connection. Prefer bundled HTML for a self-contained resource.', file: 'fxmanifest.lua' });
     } else {
       const safe = !file.includes('\\') && !file.startsWith('/') && !file.split('/').includes('..') && !file.includes(':');
       add(`Manifest file: ${file}`, safe && hasFile(file, names), `The ${key} entry must match at least one project file with the same case.`, 'fxmanifest.lua');
     }
   }
   for (const page of values.ui_page ?? []) {
-    if (/^https:\/\//.test(page)) continue;
+    if (/^https:\/\//i.test(page)) continue;
     const packaged = [...(values.file ?? []), ...(values.files ?? [])];
     add('Packaged NUI page', packaged.some(pattern => globMatches(pattern,page)), 'The local ui_page must also be included in the files list.', 'fxmanifest.lua');
     checks.push(...reviewNuiLinks(project, page, packaged));
@@ -190,11 +193,13 @@ export function inspectResource(project: Project): ResourceReview {
   checks.push({ name: 'Live FiveM test', status: 'review', detail: 'These are syntax and structural checks. Natives, multiplayer behavior, HTML/CSS/JavaScript behavior, and framework integrations require a real local FiveM test.' });
   return { valid: checks.every(check => check.status !== 'fail'), checks, dependencies };
 }
-export async function reviewResource(project: Project, runner: SyntaxRunner): Promise<ResourceReview> {
+export async function reviewResource(project: Project, runner: SyntaxRunner, signal?: AbortSignal): Promise<ResourceReview> {
   const result = inspectResource(project);
   for (const [file, code] of Object.entries(project.files)) {
     if (!/\.lua$/i.test(file)) continue;
+    signal?.throwIfAborted();
     const check = await runner(code, { syntaxOnly: true });
+    signal?.throwIfAborted();
     result.checks.push({ name: `Lua 5.4 syntax: ${file}`, status: check.ok ? 'pass' : 'fail', detail: check.ok ? 'Compiled successfully. No game code was executed.' : check.error ?? 'Lua syntax check failed.', file, line: check.line });
   }
   result.valid = result.checks.every(check => check.status !== 'fail');

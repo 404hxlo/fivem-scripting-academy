@@ -1,9 +1,50 @@
 import {describe,it,expect} from 'vitest';
-import {newState,parseBackup,streak,safeFileName,isComplete} from '../src/lib/state';
+import {newState,parseBackup,readBrowserProfile,saveBrowserProfile,serializeBackup,streak,safeFileName,isComplete} from '../src/lib/state';
+import {MAX_DISPATCH_DRAFT_LENGTH} from '../electron/academy-state.mjs';
 import {createProject,snapshot} from '../src/lib/templates';
 import {createRequire} from 'node:module';
 const desktop = createRequire(import.meta.url)('../electron/backend.cjs');
 describe('learning progress',()=>{
+ it('roundtrips route drafts and earned City Dispatch stamps in browser storage and portable backups',()=>{
+   const original = {...newState(), arcade:{bestScore:2}, dispatch:{
+     drafts:{'first-stop':"drive('east')\npickup()", 'market-loop':'', 'night-shift':'x'.repeat(MAX_DISPATCH_DRAFT_LENGTH)},
+     completed:['first-stop','market-loop'],
+   }};
+   let stored = '';
+   saveBrowserProfile(original,{setItem:(_key,value)=>{stored=value}});
+   expect(readBrowserProfile(stored).state).toEqual(original);
+   expect(parseBackup(serializeBackup(original))).toEqual(original);
+   expect(parseBackup(serializeBackup(newState())).dispatch).toBeUndefined();
+ });
+ it('rejects invalid route drafts and unknown completion stamps on import',()=>{
+   for (const dispatch of [
+     {drafts:{'first-stop':'x'.repeat(MAX_DISPATCH_DRAFT_LENGTH+1)},completed:[]},
+     {drafts:{'unknown-route':''},completed:[]},
+     {drafts:{},completed:['unlisted']},
+     {drafts:null,completed:[]},
+     {drafts:{},completed:'first-stop'},
+   ]) {
+     expect(()=>parseBackup(JSON.stringify({...newState(),dispatch}))).toThrow(/City Dispatch/);
+   }
+ });
+ it('preserves project IDs, files and history while repairing a legacy browser device name',()=>{
+   const existing = createProject('academy_con','blank');
+   const saved = snapshot(createProject('old_project','command'));
+   saved.name = 'con';
+   const repaired = readBrowserProfile(JSON.stringify({...newState(), projects:[existing,saved]}));
+   expect(repaired.renamed).toEqual(['con → academy_con_2']);
+   expect(repaired.state?.projects).toEqual([existing,{...saved,name:'academy_con_2'}]);
+   expect(readBrowserProfile(JSON.stringify(repaired.state)).renamed).toEqual([]);
+ });
+ it('rejects unreadable browser state before overwriting the last saved profile',()=>{
+   let stored = 'previous profile';
+   const storage = {setItem:(_key:string,value:string)=>{stored=value}};
+   const project = createProject('example','blank');
+   const invalid = {...newState(),projects:[{...project,name:'con'}]};
+   expect(()=>saveBrowserProfile(invalid,storage)).toThrow(/reserved/i);
+   expect(stored).toBe('previous profile');
+   expect(()=>readBrowserProfile(JSON.stringify({...invalid,track:'unknown'}))).toThrow(/Track/);
+ });
  it('roundtrips an offline backup with code and project history',()=>{const s=newState();s.projects=[snapshot(createProject('my_resource','command'))];s.studySeconds=120;expect(parseBackup(JSON.stringify(s))).toEqual(s)});
  it('rejects corrupted progress and unsafe project files',()=>{expect(()=>parseBackup('{"version":9}')).toThrow();const s=newState();s.projects=[createProject('my_resource','command')];s.projects[0].files['../server.cfg']='danger';expect(()=>parseBackup(JSON.stringify(s))).toThrow()});
  it('tracks consecutive calendar days, including yesterday',()=>{expect(streak(['2026-11-16','2026-11-17'],new Date(2026,10,18))).toBe(2);expect(streak(['2026-11-15'],new Date(2026,10,18))).toBe(0)});

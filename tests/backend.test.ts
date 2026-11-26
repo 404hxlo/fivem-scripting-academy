@@ -16,6 +16,23 @@ const project = (): Project => ({ id: 'project-1', name: 'academy_greeting', tem
 const state = (): AcademyState => ({ version: 1, onboarded: true, track: 'Beginner', depth: 'Detailed', currentLesson: 'lua-first', progress: { 'lua-first': { code: 'print("hello")', exercisePassed: true, quizAnswer: 1, quizCorrect: true, completed: true, hints: 1, attempts: 2, updated: '2026-11-18T12:00:00.000Z' } }, projects: [project()], studySeconds: 65, studyDays: ['2026-11-18'], sourceOverrides: {}, serverPath: '' });
 
 describe('SQLite progress persistence', () => {
+  it('adds City Dispatch to an existing saved profile and restores the stamps and drafts from JSON', () => {
+    const file = path.join(temp(), 'academy.sqlite');
+    let store = new AcademyStore(file);
+    const original = state();
+    store.save(original);
+    const next = {...store.load(), dispatch:{completed:['first-stop'], drafts:{'first-stop':"drive('east')", 'market-loop':'for i = 1, 2 do\nend'}}};
+    store.save(next);
+    store.close();
+    store = new AcademyStore(file);
+    try {
+      expect(store.load()).toEqual(next);
+      const backup = serializeBackup(store.load());
+      store.save(original);
+      store.import(parseBackup(backup));
+      expect(store.load()).toEqual(next);
+    } finally { store.close(); }
+  });
   it('accepts the initial onboarding state before a lesson is chosen', () => {
     expect(validateState({ ...state(), currentLesson: '', onboarded: false }).currentLesson).toBe('');
   });

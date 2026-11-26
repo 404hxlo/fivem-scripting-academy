@@ -5,6 +5,18 @@ import { executeLua } from '../src/lib/lua-core';
 import { buildResourceZip, inspectResource, reviewResource, validResourceName, validResourcePath } from '../src/lib/resource';
 
 describe('resource validation and packaging', () => {
+  it('rejects reserved folder names and unknown templates during creation', () => {
+    for (const name of ['con', 'lpt1', 'nul']) expect(() => createProject(name, 'blank')).toThrow();
+    expect(() => createProject('academy_test', 'constructor')).toThrow('Choose a resource template');
+  });
+  it('requires ui_page to identify one actual document even when files uses a glob', () => {
+    const project = createProject('academy_test', 'nui');
+    project.files['fxmanifest.lua'] = "fx_version 'cerulean'\ngame 'gta5'\nui_page 'html/*.html'\nfiles {'html/*'}";
+    expect(inspectResource(project).valid).toBe(false);
+    expect(() => buildResourceZip(project)).toThrow('html/*.html');
+    project.files['fxmanifest.lua'] = project.files['fxmanifest.lua'].replace('html/*.html', 'html/index.html');
+    expect(inspectResource(project).valid).toBe(true);
+  });
   it.each(Object.keys(templates))('compiles and validates the %s project template', async template => {
     const project = createProject('academy_test', template);
     const review = await reviewResource(project, executeLua);
@@ -18,6 +30,18 @@ describe('resource validation and packaging', () => {
     const review = await reviewResource(project, executeLua);
     expect(review.valid).toBe(false);
     expect(review.checks.find(check => check.name === 'Lua 5.4 syntax: client.lua')?.status).toBe('fail');
+  });
+  it('stops checking additional Lua files when the workspace changes', async () => {
+    const project = createProject('academy_test', 'blank');
+    const controller = new AbortController();
+    let calls = 0;
+    const check = reviewResource(project, async () => {
+      calls++;
+      controller.abort();
+      return {ok:true,output:[],durationMs:0};
+    }, controller.signal);
+    await expect(check).rejects.toMatchObject({name:'AbortError'});
+    expect(calls).toBe(1);
   });
   it('rejects a missing declared script while allowing a real glob', () => {
     const project = createProject('academy_test', 'command');

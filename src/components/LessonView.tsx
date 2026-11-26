@@ -16,6 +16,7 @@ export function LessonView({lesson,state,update,notify,next,saveProject}:{lesson
  const mainFile=lesson.exercise.filename??'exercise.lua';
  const scratchExtension=mainFile==='.gitignore'?'txt':mainFile.split('.').pop()??'lua';
  const scratchFile=`independent-challenge.${['lua','html','css','js','json','md','txt','sql','cfg','yml','yaml'].includes(scratchExtension)?scratchExtension:'txt'}`;
+ const scratchCode = progress.files?.[scratchFile] ?? (scratchFile.endsWith('.lua') ? '-- Write your independent challenge here.\n' : '');
  const [stage,setStage]=useState<Stage>('learn');
  const [evaluation,setEvaluation]=useState<Evaluation|null>(null);
  const [busy,setBusy]=useState(false);
@@ -26,6 +27,7 @@ export function LessonView({lesson,state,update,notify,next,saveProject}:{lesson
  const [leftWidth,setLeftWidth]=useState(43);
  const [scratchOutput,setScratchOutput]=useState<{ok:boolean;output:string[];error?:string}|null>(null);
  const revision=useRef(0),alive=useRef(true),splitRef=useRef<HTMLDivElement>(null),readerRef=useRef<HTMLDivElement>(null);
+ const scratchRevision = useRef(0);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false}},[]);
  useEffect(()=>{readerRef.current?.scrollTo({top:0})},[stage]);
  const files=Object.fromEntries(Object.entries({...lesson.exercise.files,...progress.files,[mainFile]:progress.code}).filter(([name])=>name!==scratchFile));
@@ -50,11 +52,28 @@ export function LessonView({lesson,state,update,notify,next,saveProject}:{lesson
   }catch(error){if(alive.current)notify('The checks could not finish: '+String(error));}
   finally{if(alive.current)setBusy(false);}
  }
- async function runScratch(){
-  if(!scratchFile.endsWith('.lua'))return;
+ function editScratch(code: string) {
+  if (code === scratchCode) return;
+  scratchRevision.current++;
+  setScratchOutput(null);
+  editProgress(p => ({...p, files: {...p.files, [scratchFile]: code}, updated: new Date().toISOString()}));
+ }
+ async function runScratch() {
+  if (!scratchFile.endsWith('.lua')) return;
+  const checkedRevision = scratchRevision.current;
   setBusy(true);
-  try{const result=await runLua(progress.files?.[scratchFile]??'',{syntaxOnly:lesson.exercise.mode!=='lua'});if(alive.current)setScratchOutput(result);}
-  finally{if(alive.current)setBusy(false);}
+  try {
+   const result = await runLua(scratchCode, {syntaxOnly: lesson.exercise.mode !== 'lua'});
+   if (alive.current && scratchRevision.current === checkedRevision) setScratchOutput(result);
+  } catch (error) {
+   if (alive.current && scratchRevision.current === checkedRevision) notify('Practice could not finish: ' + String(error));
+  } finally {
+   if (alive.current) setBusy(false);
+  }
+ }
+ function selectQuizAnswer(index: number) {
+  if (progress.quizAnswer === index) return;
+  editProgress(p => ({...p, quizAnswer: index, quizCorrect: undefined, completed: false, updated: new Date().toISOString()}));
  }
  function showHint(){editProgress(p=>({...p,hints:Math.min(3,p.hints+1),updated:new Date().toISOString()}))}
  function finish(){if(!canComplete)return;update(s=>({...s,studyDays:[...new Set([...s.studyDays,localDay()])],progress:{...s.progress,[lesson.id]:{...(s.progress[lesson.id]??freshProgress(lesson)),completed:true,updated:new Date().toISOString()}}}));notify('Lesson completed. Keep building on what you learned.');next()}
@@ -92,7 +111,7 @@ export function LessonView({lesson,state,update,notify,next,saveProject}:{lesson
      </>}
      {stage==='quiz'&&<>
       <div className="reader-section-label">03 <span>CHECK YOUR UNDERSTANDING</span></div><h2>Can you explain why?</h2><p className="quiz-question">{lesson.quiz.question}</p>
-      <div className="quiz-options" role="radiogroup" aria-label={lesson.quiz.question}>{lesson.quiz.options.map((option,index)=><button role="radio" aria-checked={progress.quizAnswer===index} key={option} className={`${progress.quizAnswer===index?'selected':''} ${progress.quizCorrect!==undefined&&progress.quizAnswer===index?(progress.quizCorrect?'correct':'incorrect'):''}`} onClick={()=>editProgress(p=>({...p,quizAnswer:index,quizCorrect:undefined,completed:false,updated:new Date().toISOString()}))}><span className="quiz-letter">{String.fromCharCode(65+index)}</span><span>{option}</span>{progress.quizAnswer===index?<span className="quiz-selected-dot"/>:null}</button>)}</div>
+      <div className="quiz-options" role="radiogroup" aria-label={lesson.quiz.question}>{lesson.quiz.options.map((option,index)=><button role="radio" aria-checked={progress.quizAnswer===index} key={option} className={`${progress.quizAnswer===index?'selected':''} ${progress.quizCorrect!==undefined&&progress.quizAnswer===index?(progress.quizCorrect?'correct':'incorrect'):''}`} onClick={()=>selectQuizAnswer(index)}><span className="quiz-letter">{String.fromCharCode(65+index)}</span><span>{option}</span>{progress.quizAnswer===index?<span className="quiz-selected-dot"/>:null}</button>)}</div>
       <button className="primary" disabled={progress.quizAnswer===undefined} onClick={()=>editProgress(p=>({...p,quizCorrect:p.quizAnswer===lesson.quiz.answer,completed:p.completed&&p.quizAnswer===lesson.quiz.answer,updated:new Date().toISOString()}))}>Check answer <ArrowRight size={15}/></button>
       {progress.quizCorrect!==undefined&&<div className={`quiz-feedback ${progress.quizCorrect?'correct':'incorrect'}`} role="status">{progress.quizCorrect?<CheckCircle2 size={20}/>:<HelpCircle size={20}/>}<div><strong>{progress.quizCorrect?'You’ve got the idea.':'Let’s think through that again.'}</strong><p>{lesson.quiz.explanation}</p>{!progress.quizCorrect&&<button className="text-button" onClick={()=>setStage('learn')}>Revisit the explanation <ArrowRight size={13}/></button>}</div></div>}
       {progress.quizCorrect&&<div className="reader-stage-footer"><span>Connect what you learned.</span><button className="secondary" onClick={()=>setStage('review')}>Review lesson <ArrowRight size={15}/></button></div>}
@@ -109,7 +128,7 @@ export function LessonView({lesson,state,update,notify,next,saveProject}:{lesson
    <div className="lesson-resize-handle" role="separator" aria-label="Resize lesson and editor panels" aria-orientation="vertical" aria-valuenow={Math.round(leftWidth)} aria-valuemin={32} aria-valuemax={60} tabIndex={0} onKeyDown={event=>{if(event.key==='ArrowLeft'){event.preventDefault();setLeftWidth(value=>Math.max(32,value-2))}if(event.key==='ArrowRight'){event.preventDefault();setLeftWidth(value=>Math.min(60,value+2))}}} onPointerDown={event=>{event.currentTarget.setPointerCapture(event.pointerId);resize(event.clientX)}} onPointerMove={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))resize(event.clientX)}} onPointerUp={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId)}}><GripVertical size={12}/></div>
    <section className="lesson-coding">
     <div className="workspace-topline"><div><span className="workspace-file-icon"><Terminal size={17}/></span><div><strong>{independent?'Independent practice':compare?'Learn from the differences':'Your coding workspace'}</strong><small>{independent?'Saved separately · self-reviewed':compare?'Your code on the left · example on the right':status}</small></div></div><div className="workspace-view-controls">{(compare||independent)&&<button className="text-button" onClick={()=>{setCompare(false);setIndependent(false)}}><X size={13}/> Back to exercise</button>}{!compare&&!independent&&revealed&&<button className="text-button" onClick={()=>setCompare(true)}><Eye size={13}/> Compare</button>}</div></div>
-    <div className="lesson-editor-container"><CodeEditor identity={`${lesson.id}${independent?'/independent':compare?'/compare':''}`} files={independent?{[scratchFile]:progress.files?.[scratchFile]??(scratchFile.endsWith('.lua')?'-- Write your independent challenge here.\n':'')}:compare?{[mainFile]:progress.code}:files} mainFile={independent?scratchFile:mainFile} solution={compare?lesson.exercise.solution:undefined} onError={notify} onChange={changed=>{if(independent){setScratchOutput(null);editProgress(p=>({...p,files:{...p.files,[scratchFile]:changed[scratchFile]},updated:new Date().toISOString()}))}else editFiles(changed)}}/></div>
+    <div className="lesson-editor-container"><CodeEditor identity={`${lesson.id}${independent?'/independent':compare?'/compare':''}`} files={independent?{[scratchFile]:scratchCode}:compare?{[mainFile]:progress.code}:files} mainFile={independent?scratchFile:mainFile} solution={compare?lesson.exercise.solution:undefined} onError={notify} onChange={changed=>{if(independent)editScratch(changed[scratchFile]);else editFiles(changed)}}/></div>
     <div className="run-toolbar"><div className="run-mode"><span className="status-dot"/><span>{independent?'Independent practice':lesson.exercise.mode==='lua'?'Lua 5.4 sandbox':lesson.exercise.mode==='fivem'?'Educational mock · not a live game':'Static checks · not a live game'}</span></div><div className="button-row">{!independent&&<button className="text-button" onClick={()=>setResetOpen(true)} disabled={busy}><RotateCcw size={13}/>Reset</button>}<button className="primary run-checks" disabled={busy||compare||(independent&&!scratchFile.endsWith('.lua'))} title={independent&&!scratchFile.endsWith('.lua')?'No runtime is attached to this file type. Review the requirements and test it in a compatible local environment.':undefined} onClick={independent?runScratch:evaluate}><Play size={14}/>{busy?'Checking…':independent?(!scratchFile.endsWith('.lua')?'Self-review practice':lesson.exercise.mode==='lua'?'Run practice':'Check Lua syntax'):'Run checks'}</button></div></div>
     <div className="exercise-results" aria-live="polite">
      <div className="results-heading"><span><Terminal size={14}/> {independent?'PRACTICE OUTPUT':'FEEDBACK & OUTPUT'}</span>{!independent&&evaluation&&<strong className={evaluation.passed?'passed':'needs-work'}>{evaluation.results.filter(result=>result.passed).length}/{evaluation.results.length} checks passed</strong>}{!independent&&!evaluation&&progress.exercisePassed&&<span className="passed"><Check size={12}/> Previously passed</span>}</div>

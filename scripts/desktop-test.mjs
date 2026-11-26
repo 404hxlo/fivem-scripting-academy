@@ -103,6 +103,39 @@ try {
   passed('Correct typed Lua passes behavioral checks in the bundled offline Lua 5.4 runtime.');
   await screenshot('academy-lesson.png');
 
+  await page.getByRole('button', { name: 'Open independent workspace' }).click();
+  const practiceInput = page.locator('.monaco-editor textarea.inputarea').first();
+  const firstDraft = 'print("first practice draft")';
+  const secondDraft = 'print("edited practice draft")';
+  await practiceInput.focus();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText(firstDraft);
+  // Hold this specific real worker request until the edit has reached the editor.
+  await page.evaluate(code => {
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function(message, ...args) {
+      if (message.code === code && !message.options?.syntaxOnly) {
+        Worker.prototype.postMessage = post;
+        window.releaseAcademyPracticeRun = () => post.call(this, message, ...args);
+        return;
+      }
+      return post.call(this, message, ...args);
+    };
+  }, firstDraft);
+  await page.getByRole('button', { name: 'Run practice', exact: true }).click();
+  await page.waitForFunction(() => typeof window.releaseAcademyPracticeRun === 'function');
+  await practiceInput.focus();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText(secondDraft);
+  await page.evaluate(() => { window.releaseAcademyPracticeRun(); delete window.releaseAcademyPracticeRun; });
+  await page.waitForFunction(() => !document.querySelector('.run-checks').disabled);
+  assert.equal(await page.locator('.exercise-results .console-output').count(), 0);
+  await page.getByRole('button', { name: 'Run practice', exact: true }).click();
+  await page.locator('.exercise-results .console-output').filter({ hasText: 'edited practice draft' }).waitFor();
+  await page.getByRole('button', { name: 'Back to exercise', exact: true }).click();
+  await page.getByText('Your code passed these checks.', { exact: true }).waitFor();
+  passed('Editing independent practice during a run discards the old result and preserves the guided grade.');
+
   await page.getByRole('button', { name: 'Check understanding', exact: true }).click();
   await page.getByRole('radio', { name: 'B Writes Ready to the output', exact: true }).click();
   await page.getByRole('button', { name: 'Check answer', exact: true }).click();
@@ -115,6 +148,14 @@ try {
   assert.equal(beforeClose.progress['lua-first-program'].quizCorrect, true);
   passed('Lesson completion requires code and quiz success and persists to SQLite.');
 
+  await page.getByRole('button', { name: /Learning path/ }).click();
+  await page.locator('.lesson-list button').filter({ hasText: 'Your first instruction' }).click();
+  await page.getByRole('button', { name: /Knowledge check/ }).click();
+  await page.getByRole('radio', { name: 'B Writes Ready to the output', exact: true }).click();
+  assert.equal(await page.locator('.lesson-completed').count(), 1);
+  assert.equal(await page.locator('.quiz-feedback.correct').count(), 1);
+  passed('Re-selecting the checked quiz answer preserves the completed lesson and its saved grade.');
+
   await application.close();
   application = undefined;
   await launch();
@@ -126,12 +167,50 @@ try {
   await screenshot('academy-dashboard.png');
   passed('Closing and reopening the desktop app preserves code, quiz results, and completed progress.');
 
+  assert.equal(await page.title(), 'Brick by Script Learn');
+  await page.locator('.learn-dispatch-feature img').evaluate(image => image.decode());
+  await page.locator('.learn-wordmark img').evaluate(image => image.decode());
+  await page.getByRole('button', {name:'Open Output Arcade',exact:true}).click();
+  const arcade = page.getByRole('dialog');
+  for (let round = 0; round < 3; round++) {
+    await arcade.getByRole('radio').first().check();
+    await arcade.getByRole('button',{name:'Check prediction',exact:true}).click();
+    await arcade.locator('.oa-feedback p').waitFor();
+    if (round === 0) await screenshot('academy-arcade.png');
+    await arcade.getByRole('button',{name:round === 2 ? 'See results' : 'Next round',exact:true}).click();
+  }
+  await page.keyboard.press('Escape');
+  await arcade.waitFor({state:'hidden'});
+  await page.waitForFunction(async () => Number.isInteger((await window.academy.load()).arcade?.bestScore));
+  assert.deepEqual(await page.evaluate(async () => (await window.academy.load()).progress), reopened.progress);
+  passed('The branded workspace loads its offline artwork, plays three Output Arcade rounds and saves a personal best separately from course grades.');
+
+  await page.getByRole('button', {name: 'Play City Dispatch', exact: true}).click();
+  const routeScript = page.getByRole('textbox', {name: 'Route script', exact: true});
+  const firstRoute = ["drive('east')", "drive('east')", 'pickup()', "drive('east')", "drive('east')"].join('\n');
+  await routeScript.fill(firstRoute);
+  await page.getByRole('button', {name: 'Play route', exact: true}).click();
+  await page.waitForFunction(async () => (await window.academy.load()).dispatch?.completed.includes('first-stop'));
+  await screenshot('academy-city-dispatch.png');
+  await page.getByRole('button', {name: 'Overview', exact: true}).click();
+  await page.getByRole('button', {name: 'Play City Dispatch', exact: true}).waitFor();
+  const withRoute = await page.evaluate(() => window.academy.load());
+  assert.equal(withRoute.dispatch.drafts['first-stop'], firstRoute);
+  assert.deepEqual(withRoute.progress, reopened.progress);
+  passed('City Dispatch runs a learner-written Lua route, picks up the passenger, and saves the script and first route stamp without changing lesson grades.');
+
   await page.getByRole('button', { name: 'Playground', exact: true }).click();
   await page.getByRole('button', { name: 'New resource', exact: true }).click();
   await page.getByRole('textbox', { name: 'New resource name', exact: true }).fill('acceptance_command');
   await page.getByRole('combobox', { name: 'Resource template', exact: true }).selectOption('command');
   await page.getByRole('button', { name: 'Create workspace', exact: true }).click();
   await saved('project', 'acceptance_command');
+  await page.getByRole('textbox', { name: 'New file name' }).fill('Client.lua/helpers.lua');
+  await page.getByRole('button', { name: 'Add file', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.toast')?.textContent?.includes('directory'));
+  assert.equal(await page.locator('.file-tabs button').filter({ hasText: 'Client.lua/helpers.lua' }).count(), 0);
+  assert.equal(await page.locator('.error-banner').count(), 0);
+  passed('A filename that uses an existing file as a directory is rejected before it can block project saving.');
   await page.getByRole('button', { name: 'Check resource', exact: true }).click();
   await page.getByText('Automated checks passed — ready to export for local testing.', { exact: true }).waitFor();
   passed('A real multi-file chat-command project is created, saved, and checked.');
@@ -162,6 +241,29 @@ try {
   passed('ZIP export contains matching resource files and the app provides local FiveM testing instructions.');
   await screenshot('academy-playground.png');
 
+  for (const name of ['empty_a.lua', 'empty_b.lua']) {
+    await page.getByRole('textbox', { name: 'New file name' }).fill(name);
+    await page.getByRole('button', { name: 'Add file', exact: true }).click();
+    await page.waitForFunction(file => document.querySelector('.file-tabs .active')?.textContent.endsWith(file), name);
+  }
+  await page.getByRole('button', { name: 'Snapshot', exact: true }).click();
+  const scratchInput = page.locator('.monaco-editor textarea.inputarea').first();
+  await scratchInput.focus();
+  const discarded = 'print("discarded_snapshot_draft")';
+  await page.keyboard.insertText(discarded);
+  await page.waitForFunction(async text => (await window.academy.load()).projects[0].files['empty_b.lua'] === text, discarded);
+  await page.locator('.file-tabs').getByRole('button', { name: /empty_a\.lua/ }).click();
+  await page.getByRole('button', { name: /^History \(/ }).click();
+  await page.getByRole('button', { name: 'Restore', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Restore with backup', exact: true }).click();
+  await page.waitForFunction(async () => (await window.academy.load()).projects[0].files['empty_b.lua'] === '');
+  await page.locator('.file-tabs').getByRole('button', { name: /empty_b\.lua/ }).click();
+  await page.waitForFunction(() => document.querySelector('.monaco-editor .view-lines')?.textContent.trim() === '');
+  await scratchInput.focus();
+  await page.keyboard.insertText('-- after restore');
+  await page.waitForFunction(async () => (await window.academy.load()).projects[0].files['empty_b.lua'] === '-- after restore');
+  passed('Reopening an inactive file after restoring a snapshot shows and edits the restored version.');
+
   await page.getByRole('button', { name: 'Settings & backups', exact: true }).click();
   await page.getByLabel('Learning track').selectOption('Intermediate');
   await page.waitForFunction(async () => (await window.academy.load())?.currentLesson === 'resource-anatomy');
@@ -173,6 +275,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.toast')?.textContent?.includes('Progress backup saved:'));
   const backup = JSON.parse(await fs.readFile(backupPath, 'utf8'));
   assert.equal(backup.track, 'Intermediate');
+  assert.deepEqual(backup.dispatch, withRoute.dispatch);
   assert.equal(backup.progress['lua-first-program'].completed, true);
   assert.ok(backup.projects.some(project => project.name === 'acceptance_command'));
   await page.getByLabel('Learning track').selectOption('Advanced');
@@ -185,6 +288,7 @@ try {
   await page.waitForFunction(async () => (await window.academy.load())?.track === 'Intermediate');
   assert.equal(await page.getByLabel('Learning track').inputValue(), 'Intermediate');
   assert.equal(await page.getByLabel('Explanation depth').inputValue(), 'Technical');
+  assert.deepEqual(await page.evaluate(async () => (await window.academy.load()).dispatch), withRoute.dispatch);
   assert.ok((await fs.readdir(path.join(dataDirectory, 'backups'))).some(name => name.endsWith('.sqlite')));
   passed('Settings persist; real backup export/import restores code, projects and preferences after creating a SQLite recovery copy.');
 
@@ -265,6 +369,18 @@ try {
   assert.equal(await fs.readFile(path.join(exportsDirectory, learnerProject.name, 'client.lua'), 'utf8'), evaluatedCommand);
   assert.equal(await fs.readFile(path.join(exportsDirectory, learnerProject.name, 'fxmanifest.lua'), 'utf8'), customManifest);
   passed('The learner’s own chat-command solution passes mock behavior checks, transfers to the playground, and exports unchanged.');
+  await page.getByRole('button', {name:/Learning path/}).click();
+  await page.locator('.lesson-list button').filter({hasText:'Callbacks that always finish'}).click();
+  const callbackLesson = 'nui-callbacks-focus';
+  const startClose = 'RegisterNUICallback("close", function(_, reply) SetNuiFocus(false, false) SendNUIMessage({ action = "setVisible", visible = false })';
+  await setEditor(startClose + ' end)', callbackLesson);
+  await page.getByRole('button', {name:'Run checks',exact:true}).click();
+  await page.getByText('A useful clue for your next change.', {exact:true}).waitFor();
+  await setEditor(startClose + ' reply({ ok = true }) end)', callbackLesson);
+  await page.getByRole('button', {name:'Run checks',exact:true}).click();
+  await page.getByText('Your code passed these checks.', {exact:true}).waitFor();
+  await page.waitForFunction(async id => (await window.academy.load()).progress[id]?.exercisePassed, callbackLesson);
+  passed('The NUI exercise rejects an unanswered request and accepts a working legacy callback with a renamed response parameter.');
   // Hold an autosave acknowledgement open so the final edit is still dirty
   // when the native window receives Close. Reopening reads the real SQLite DB.
   await page.getByRole('button', {name: 'Settings & backups', exact: true}).click();

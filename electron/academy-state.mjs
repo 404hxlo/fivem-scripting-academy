@@ -3,6 +3,9 @@ const MAX_BACKUP_BYTES = 2 * MAX_STATE_BYTES;
 const encoder = new TextEncoder();
 const byteLength = value => encoder.encode(value).byteLength;
 const MAX_FILE_BYTES = 256 * 1024;
+const MAX_PROJECTS = 100;
+const DISPATCH_ROUTES = ['first-stop', 'market-loop', 'night-shift'];
+const MAX_DISPATCH_DRAFT_LENGTH = 4096;
 const SOURCE_HOSTS = new Set(['docs.fivem.net', 'www.lua.org', 'lua.org', 'docs.qbcore.org', 'qbcore.org', 'docs.esx-framework.org', 'overextended.dev', 'coxdocs.dev', 'developer.mozilla.org', 'git-scm.com', 'code.visualstudio.com', 'github.com']);
 const EXTERNAL_HOSTS = new Set([...SOURCE_HOSTS, 'github.com', 'www.electronjs.org', 'nodejs.org']);
 const fail = message => { throw new Error(message); };
@@ -20,9 +23,14 @@ function array(value, name, max) { if (!Array.isArray(value) || value.length > m
 function oneOf(value, values, name) { if (!values.includes(value)) fail(`${name} is not supported.`); return value; }
 function date(value, name) { string(value, name, 60); if (!Number.isFinite(Date.parse(value))) fail(`${name} is not a valid date.`); return value; }
 function id(value, name) { string(value, name, 120); if (!/^[a-zA-Z0-9_.:-]{1,120}$/.test(value) || ['__proto__', 'constructor', 'prototype'].includes(value)) fail(`${name} is invalid.`); return value; }
+function isReservedResourceName(value) {
+  return typeof value === 'string' && /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(value);
+}
+class ReservedResourceNameError extends Error {}
 function safeName(value) {
   string(value, 'Resource name', 64);
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(value) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(value)) fail('Use a resource name with letters, numbers, underscores or hyphens; Windows reserved names are not allowed.');
+  if (isReservedResourceName(value)) throw new ReservedResourceNameError('Windows reserved names cannot be used for resources.');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(value)) fail('Use a resource name with letters, numbers, underscores or hyphens.');
   return value;
 }
 function safeFilePath(value) {
@@ -46,8 +54,9 @@ function files(value, allowEmpty = false) {
     if (seen.has(lower)) fail('File names must be unique on Windows, ignoring case.');
     seen.add(lower);
     string(content, `Content of ${file}`, MAX_FILE_BYTES);
-    total += byteLength(content);
-    if (byteLength(content) > MAX_FILE_BYTES || total > 2 * 1024 * 1024) fail('Project files exceed the size limit.');
+    const bytes = byteLength(content);
+    total += bytes;
+    if (bytes > MAX_FILE_BYTES || total > 2 * 1024 * 1024) fail('Project files exceed the size limit.');
     result[file] = content;
   }
   for (const file of seen) if ([...seen].some(other => other !== file && other.startsWith(`${file}/`))) fail('A file cannot also be used as a directory.');
@@ -92,13 +101,29 @@ function validateState(input) {
     if (value.checked !== undefined) overrides[key].checked = date(value.checked, 'Source check date');
     if (value.status !== undefined) overrides[key].status = string(value.status, 'Source status', 500);
   }
-  const projects = array(s.projects, 'Projects', 100).map(validateProject);
+  const projects = array(s.projects, 'Projects', MAX_PROJECTS).map(validateProject);
   if (new Set(projects.map(p => p.id)).size !== projects.length) fail('Project IDs must be unique.');
   const studyDays = array(s.studyDays, 'Study days', 15000).map(day => {
     if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day))) fail('Invalid study day.');
     return day;
   });
-  return { version: 1, onboarded: boolean(s.onboarded, 'Welcome setting'), track: oneOf(s.track, ['Beginner','Intermediate','Advanced'], 'Track'), depth: oneOf(s.depth, ['Simple','Detailed','Technical'], 'Explanation depth'), currentLesson: s.currentLesson === '' ? '' : id(s.currentLesson, 'Current lesson'), progress, projects, studySeconds: integer(s.studySeconds, 'Study time'), studyDays: [...new Set(studyDays)], sourceOverrides: overrides, serverPath: string(s.serverPath, 'Server path', 1024) };
+  const state = { version: 1, onboarded: boolean(s.onboarded, 'Welcome setting'), track: oneOf(s.track, ['Beginner','Intermediate','Advanced'], 'Track'), depth: oneOf(s.depth, ['Simple','Detailed','Technical'], 'Explanation depth'), currentLesson: s.currentLesson === '' ? '' : id(s.currentLesson, 'Current lesson'), progress, projects, studySeconds: integer(s.studySeconds, 'Study time'), studyDays: [...new Set(studyDays)], sourceOverrides: overrides, serverPath: string(s.serverPath, 'Server path', 1024) };
+  if (s.arcade !== undefined) {
+    const arcade = object(s.arcade, 'Output Arcade record');
+    state.arcade = { bestScore: integer(arcade.bestScore, 'Output Arcade best score', 3) };
+  }
+  if (s.dispatch !== undefined) {
+    const dispatch = object(s.dispatch, 'City Dispatch record');
+    const drafts = {};
+    for (const [route, code] of Object.entries(object(dispatch.drafts, 'City Dispatch drafts'))) {
+      oneOf(route, DISPATCH_ROUTES, 'City Dispatch route');
+      drafts[route] = string(code, 'City Dispatch draft', MAX_DISPATCH_DRAFT_LENGTH);
+    }
+    const completed = array(dispatch.completed, 'Completed City Dispatch routes', DISPATCH_ROUTES.length)
+      .map(route => oneOf(route, DISPATCH_ROUTES, 'City Dispatch route'));
+    state.dispatch = { drafts, completed: [...new Set(completed)] };
+  }
+  return state;
 }
 
 function parseBackup(text) {
@@ -118,7 +143,8 @@ function serializeBackup(input) {
 }
 
 export {
-  MAX_STATE_BYTES, MAX_BACKUP_BYTES, SOURCE_HOSTS, EXTERNAL_HOSTS,
+  MAX_STATE_BYTES, MAX_BACKUP_BYTES, MAX_PROJECTS, MAX_DISPATCH_DRAFT_LENGTH, SOURCE_HOSTS, EXTERNAL_HOSTS,
+  isReservedResourceName, ReservedResourceNameError,
   validateState, validateProject, safeFilePath, safeName, validateUrl,
-  parseBackup, serializeBackup,
+  parseBackup, serializeBackup, files as validateProjectFiles,
 };

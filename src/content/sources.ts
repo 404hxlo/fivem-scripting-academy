@@ -11,8 +11,11 @@ export const modules: CourseModule[] = [
  {id:8,title:'Professional Development',subtitle:'Test, measure, document, and ship maintainable resources.',icon:'git-branch',project:'A versioned resource release'},
  {id:9,title:'Advanced Project Studio',subtitle:'Plan, build, test, and review complete systems independently.',icon:'rocket',project:'Eleven independent project briefs'}
 ];
-const s = (id:string,title:string,url:string,topic:string,kind:Source['kind']='official',notes?:string):Source => ({id,title,url,topic,kind,retrieved:'2026-11-18',notes});
+const rechecked = new Set(['security','events-listen','qb-player','esx-player','state-bags','nui-callbacks','nui-legacy','nui-runtime','server-game-timer']);
+const s = (id:string,title:string,url:string,topic:string,kind:Source['kind']='official',notes?:string):Source => ({id,title,url,topic,kind,retrieved:rechecked.has(id)?'2026-11-20':'2026-11-18',notes});
 export const sourceRegistry: Source[] = [
+ s('nui-runtime','CfxLua NUI callback implementation','https://github.com/citizenfx/fivem/blob/master/data/shared/citizen/scripting/lua/scheduler.lua','Current and legacy NUI callback registration','official','Both RegisterNuiCallback and RegisterNUICallback are supported; the legacy implementation uses the compatibility event path.'),
+ s('server-game-timer','Server GetGameTimer','https://github.com/citizenfx/fivem/blob/master/ext/native-decls/GetGameTimer.md','Server game time in milliseconds for short cooldowns'),
  s('manual','FiveM scripting manual','https://docs.fivem.net/docs/scripting-manual/','Curriculum foundation and scripting guide index'),
  s('lua-manual','Lua 5.4 reference manual','https://www.lua.org/manual/5.4/manual.html','Lua syntax, values, control flow, functions, tables and errors'),
  s('lua-runtime','CfxLua runtime','https://docs.fivem.net/docs/scripting-manual/runtimes/lua/','Lua 5.4, CfxLua extensions and exports'),
